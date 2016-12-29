@@ -34,6 +34,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
+    <Reference Include="System.configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
@@ -43,8 +44,15 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ByteBuffer.cs" />
+    <Compile Include="ClusterManager.cs" />
+    <Compile Include="ClusterNode.cs" />
+    <Compile Include="IndexedList.cs" />
+    <Compile Include="MessageProtocol.cs" />
+    <Compile Include="NetworkUtil.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ClusterServer.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
