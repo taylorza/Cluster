@@ -28,7 +28,7 @@ namespace Cluster
 
         public ClusterManager(ClusterNode localNode, IEnumerable<ClusterNode> seedNodes)
         {
-            if (!int.TryParse(ConfigurationManager.AppSettings["gossipSpan"], out _scavangePeriod))
+            if (!int.TryParse(ConfigurationManager.AppSettings["gossipSpan"], out _gossipSpan))
             {
                 _gossipSpan = 3;
                 Trace.TraceInformation($"Failed to read <scavangePeriod> from config, defaulting to {_gossipSpan}ms");
