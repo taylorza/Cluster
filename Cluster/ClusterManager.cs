@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -14,8 +15,9 @@ namespace Cluster
 {
     class ClusterManager
     {
-        private int _gossipPeriod = 1000;
-        private int _scavangePeriod = 10000;
+        private int _gossipSpan;
+        private int _gossipPeriod;
+        private int _scavangePeriod;
 
         private Random _random = new Random();
         private IndexedList<ClusterNode> _activeNodes = new IndexedList<ClusterNode>();
@@ -26,6 +28,24 @@ namespace Cluster
 
         public ClusterManager(ClusterNode localNode, IEnumerable<ClusterNode> seedNodes)
         {
+            if (!int.TryParse(ConfigurationManager.AppSettings["gossipSpan"], out _scavangePeriod))
+            {
+                _gossipSpan = 3;
+                Trace.TraceInformation($"Failed to read <scavangePeriod> from config, defaulting to {_gossipSpan}ms");
+            }
+
+            if (!int.TryParse(ConfigurationManager.AppSettings["gossipPeriod"], out _gossipPeriod))
+            {                
+                _gossipPeriod = 1000;
+                Trace.TraceInformation($"Failed to read <gossipPeriod> from config, defaulting to {_gossipPeriod}ms");
+            }
+
+            if (!int.TryParse(ConfigurationManager.AppSettings["scavangePeriod"], out _scavangePeriod))
+            {
+                _scavangePeriod = 10000;
+                Trace.TraceInformation($"Failed to read <scavangePeriod> from config, defaulting to {_scavangePeriod}ms");
+            }
+
             _localNode = localNode;
             _activeNodes.Add(_localNode);
             foreach(var node in seedNodes)
@@ -214,7 +234,7 @@ namespace Cluster
         private ClusterNode[] SelectGossipPartners(ClusterNode[] sourceNodes)
         {
             Shuffle(sourceNodes);
-            return sourceNodes.Where((node) => node != _localNode).Take(Math.Min((sourceNodes.Length / 2) + 1, 3)).ToArray();
+            return sourceNodes.Where((node) => node != _localNode).Take(Math.Min((sourceNodes.Length / 2) + 1, _gossipSpan)).ToArray();
         }
 
         private ClusterNode[] CloneActiveNodes()
