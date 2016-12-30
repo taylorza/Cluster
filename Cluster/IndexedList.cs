@@ -108,8 +108,8 @@ namespace Cluster
         {
             ThrowIfError(item);
 
+            _listIndex.Add(item, _list.Count);
             _list.Add(item);
-            _listIndex.Add(item, _list.Count - 1);
         }
         
         public void Clear()
@@ -146,8 +146,8 @@ namespace Cluster
         public void Insert(int index, T item)
         {
             ThrowIfError(item);
-            _list.Insert(index, item);
             _listIndex.Add(item, index);
+            _list.Insert(index, item);
         }
 
         public bool Remove(T item)
@@ -162,10 +162,31 @@ namespace Cluster
 
         public void RemoveAt(int index)
         {
+            if (Count == 1)
+            {
+                _list.Clear();
+                _listIndex.Clear();
+                return;
+            }
+
             T item = _list[index];
+            if (index == _listIndex.Count - 1)
+            {
+                _listIndex.Remove(item);
+                _list.RemoveAt(index);
+                return;
+            }
+
+            // Remove an item by swapping it with the last item in the list
+            // and then removing the last item from the list. 
+            // This makes a O(n) operation a O(1) but sacrifices the order of the items in the list
+            T lastItem = _list[_list.Count - 1];
+            
             _list[index] = _list[_list.Count - 1];
+            _listIndex[lastItem] = index;
+
+            _listIndex.Remove(item);            
             _list.RemoveAt(_list.Count - 1);
-            _listIndex.Remove(item);
         }
 
         IEnumerator IEnumerable.GetEnumerator()

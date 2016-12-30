@@ -50,7 +50,6 @@ namespace Cluster
                     case State.ReadLength:
                         if (_buffer.Count >= PREFIX_LENGTH)
                         {
-                            Debug.WriteLine("Read Message Length");
                             _buffer.Dequeue(_lengthBuffer);
                             _messageLength = BitConverter.ToInt32(_lengthBuffer, 0);
                             _currentState = State.ReadMessage;
@@ -59,7 +58,6 @@ namespace Cluster
 
                     case State.ReadMessage:
                         {
-                            Debug.WriteLine($"Read Message - {_buffer.Count} / {_messageLength}");
                             if (_buffer.Count >= _messageLength)
                             {
                                 var message = new byte[_messageLength];

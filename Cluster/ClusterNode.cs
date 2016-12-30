@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 namespace Cluster
 {
     [Serializable]
-    class ClusterNode : IEquatable<ClusterNode>
+    public class ClusterNode : IEquatable<ClusterNode>
     {
         [NonSerialized]
         private DateTime _lastSeen;
@@ -16,7 +16,7 @@ namespace Cluster
         [NonSerialized]
         private int _errorCount;
 
-        public bool IsOriginNode { get; private set; }
+        internal bool IsOriginNode { get; private set; }
         public int HeartBeat { get; private set; } = 1;
         public IPEndPoint EndPoint { get; private set; }
 
@@ -29,10 +29,10 @@ namespace Cluster
         public int ErrorCount
         {
             get { return _errorCount; }
-            set { _errorCount = value; }
+            internal set { _errorCount = value; }
         }
 
-        public ClusterNode(IPEndPoint endpoint, bool isOriginNode)
+        internal ClusterNode(IPEndPoint endpoint, bool isOriginNode)
         {
             HeartBeat = 1;
             EndPoint = endpoint;
@@ -40,12 +40,12 @@ namespace Cluster
             IsOriginNode = isOriginNode;
         }
 
-        public void Update()
+        internal void Update()
         {
             Update(HeartBeat + 1);
         }
 
-        public void Update(int heartBeat)
+        internal void Update(int heartBeat)
         {
             HeartBeat = heartBeat;
             LastSeen = DateTime.Now;

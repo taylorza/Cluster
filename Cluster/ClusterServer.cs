@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Cluster.Messages;
+using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Diagnostics;
@@ -38,7 +39,7 @@ namespace Cluster
                     if (!IPEndPoint.Equals(ep, _localNode.EndPoint)) seedNodes.Add(new ClusterNode(ep, false));
                 }
             }
-            _manager = new ClusterManager(_localNode, seedNodes);
+            _manager = new ClusterManager(this, _localNode, seedNodes);
         }
 
         public async Task Start()
@@ -47,7 +48,7 @@ namespace Cluster
             _listener = new TcpListener(IPAddress.Any, _serverPort);
             _listener.Start();
             
-            _manager.Start();
+            await _manager.Start();
 
             while(_running)
             {
@@ -132,7 +133,7 @@ namespace Cluster
             MemoryStream ms = new MemoryStream(e.Message);
             BinaryFormatter bf = new BinaryFormatter();
             var o = bf.Deserialize(ms);
-            _manager.UpdateNodes(o as IEnumerable<ClusterNode>);
+            var handled = _manager.DispatchMessage(o as IMessage);            
         }
     }
 }

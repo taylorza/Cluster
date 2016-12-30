@@ -20,7 +20,7 @@ namespace Cluster
             while(!Console.KeyAvailable)
             {
                 Console.SetCursorPosition(x, y);
-                Console.WriteLine($"Acive Nodes : {server.GetActiveNodes().Count}\t\tDead Nodes : {server.GetDeadNodes().Count}");
+                Console.WriteLine($"Acive Nodes : {server.GetActiveNodes().Count:000}\t\tDead Nodes : {server.GetDeadNodes().Count:000}");
                 Console.WriteLine("Press any key to exit");
                 Thread.Sleep(1000);
                 SetThreadExecutionState(EXECUTION_STATE.ES_CONTINUOUS | EXECUTION_STATE.ES_SYSTEM_REQUIRED);  
