@@ -17,10 +17,33 @@ namespace Cluster
             Console.WriteLine("Server Started...");
             int x = Console.CursorLeft;
             int y = Console.CursorTop;
+            var defaultForeground = Console.ForegroundColor;
             while(!Console.KeyAvailable)
             {
+                var activeNodes = server.GetActiveNodes();
                 Console.SetCursorPosition(x, y);
-                Console.WriteLine($"Acive Nodes : {server.GetActiveNodes().Count:000}\t\tDead Nodes : {server.GetDeadNodes().Count:000}");
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.Write($"Active Nodes : {activeNodes.Count:000}\t\t");
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"Dead Nodes : {server.GetDeadNodes().Count:000}");
+                Console.WriteLine();
+                Console.Write(new string(' ', 80));
+                Console.Write("\r");
+                foreach(var node in activeNodes)
+                {
+                    if (node.ErrorCount == 0) Console.ForegroundColor = ConsoleColor.Green;
+                    else if (node.ErrorCount == 1) Console.ForegroundColor = ConsoleColor.Yellow;
+                    else if (node.ErrorCount == 2) Console.ForegroundColor = ConsoleColor.DarkYellow;
+                    else Console.ForegroundColor = ConsoleColor.Red;
+                    if (node.ErrorCount == 0)
+                        Console.Write("O ");
+                    else
+                        Console.Write("o ");
+                }
+                
+                Console.WriteLine();
+                Console.WriteLine();
+                Console.ForegroundColor = defaultForeground;
                 Console.WriteLine("Press any key to exit");
                 Thread.Sleep(1000);
                 SetThreadExecutionState(EXECUTION_STATE.ES_CONTINUOUS | EXECUTION_STATE.ES_SYSTEM_REQUIRED);  

@@ -375,7 +375,7 @@ namespace Cluster
         private ClusterNode[] SelectGossipPartners(ClusterNode[] sourceNodes)
         {
             Shuffle(sourceNodes);
-            return sourceNodes.Where((node) => node != _localNode && node.ErrorCount <= _maxFailedGossipAttempts).Take(_gossipSpan).ToArray();
+            return sourceNodes.Where((node) => node != _localNode).Take(_gossipSpan).ToArray();
         }
 
         private ClusterNode[] CloneActiveNodes()
