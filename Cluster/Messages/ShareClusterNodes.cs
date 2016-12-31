@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace Cluster.Messages
 {
     [Serializable]
-    class ShareClusterNodes : IMessage
+    class ShareClusterNodes : Message
     {
         public ClusterNode[] Nodes { get; private set; }
 

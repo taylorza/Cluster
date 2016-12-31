@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace Cluster.Messages
 {
     [Serializable]
-    class RejectRequest : IMessage
+    class RejectRequest : Message
     {
         public RejectRequest()
         {

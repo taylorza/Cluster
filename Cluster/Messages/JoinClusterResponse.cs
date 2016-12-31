@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace Cluster.Messages
 {
     [Serializable]
-    class JoinClusterResponse : IMessage
+    class JoinClusterResponse : Message
     {
         public bool JoinSucceeded { get; private set; }
         public ClusterNode[] Nodes { get; private set; }

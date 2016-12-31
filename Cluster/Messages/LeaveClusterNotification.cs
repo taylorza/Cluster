@@ -7,15 +7,16 @@ using System.Threading.Tasks;
 namespace Cluster.Messages
 {
     [Serializable]
-    class JoinClusterRequest : Message
+    class LeaveClusterNotification : Message
     {
         public string ClusterId { get; private set; }
         public ClusterNode Node { get; private set; }
-        
-        public JoinClusterRequest(string clusterId, ClusterNode node)
-        {
+       
+        public LeaveClusterNotification(string clusterId, ClusterNode node)
+        {            
             ClusterId = clusterId;
             Node = node;
+            TimeToLive = 3;
         }
     }
 }

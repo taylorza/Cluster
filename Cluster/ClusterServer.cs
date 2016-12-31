@@ -69,8 +69,8 @@ namespace Cluster
             if (_running)
             {
                 _running = false;
-                if (_listener != null) _listener.Stop();
                 _manager.Shutdown();
+                if (_listener != null) _listener.Stop();                
             }
         }
 

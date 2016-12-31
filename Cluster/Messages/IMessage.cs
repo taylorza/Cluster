@@ -6,8 +6,12 @@ using System.Threading.Tasks;
 
 namespace Cluster.Messages
 {
-    [Serializable]
-    internal class IMessage
+    internal interface IMessage
     {
+        Guid MessageId { get; }
+        int TimeToLive { get; set; }
+        int DuplicateCount { get; set; }
+        bool IgnoreIfDuplicate { get; set; }
+        DateTime LastSeen { get; set; }   
     }
 }

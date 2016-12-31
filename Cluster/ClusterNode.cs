@@ -32,6 +32,8 @@ namespace Cluster
             internal set { _errorCount = value; }
         }
 
+        public bool IsShuttingDown { get; set; }
+
         internal ClusterNode(IPEndPoint endpoint, bool isOriginNode)
         {
             HeartBeat = 1;
@@ -42,14 +44,14 @@ namespace Cluster
 
         internal void Update()
         {
-            Update(HeartBeat + 1);
+            Update(HeartBeat + 1, 0);
         }
 
-        internal void Update(int heartBeat)
+        internal void Update(int heartBeat, int errorCount = 0)
         {
             HeartBeat = heartBeat;
             LastSeen = DateTime.Now;
-            ErrorCount = 0;
+            ErrorCount = errorCount;
         }
 
         public bool Equals(ClusterNode other)

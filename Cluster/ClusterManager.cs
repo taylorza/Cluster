@@ -1,5 +1,6 @@
 ﻿using Cluster.Messages;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Diagnostics;
@@ -27,17 +28,26 @@ namespace Cluster
         private int _nodeExpiryPeriod;
         private int _maxFailedGossipAttempts;
 
+        private Timer _gossipTimer;
+        private Timer _scavangeTimer;
+
         private Random _random = new Random();
         private IndexedList<ClusterNode> _activeNodes = new IndexedList<ClusterNode>();
         private IndexedList<ClusterNode> _deadNodes = new IndexedList<ClusterNode>();
+        private BlockingCollection<IMessage> _gossipQueue = new BlockingCollection<IMessage>();
+        private ConcurrentDictionary<Guid, IMessage> _previousMessages = new ConcurrentDictionary<Guid, IMessage>();
 
+        private ClusterNode[] _seedNodes;
         private ClusterNode _localNode;
+        private volatile bool _startShutdown;
         private CancellationTokenSource _shutdownCancellationTokenSource;
         private State _currentState;
-        
+
         internal ClusterManager(ClusterServer clusterServer, ClusterNode localNode, IEnumerable<ClusterNode> seedNodes)
         {
             _clusterServer = clusterServer;
+            _seedNodes = seedNodes.ToArray();
+            _localNode = localNode;
             _leaderElectionId = Guid.NewGuid();
 
             _clusterId = ConfigurationManager.AppSettings["clusterId"];
@@ -45,7 +55,7 @@ namespace Cluster
             //TODO: Create a custom configuration section to manage all the config data
             //TODO: Add validation of the configuration values
             if (!int.TryParse(ConfigurationManager.AppSettings["gossipPeriod"], out _gossipPeriod))
-            {                
+            {
                 _gossipPeriod = 1000;
                 Trace.TraceInformation($"Failed to read <gossipPeriod> from config, defaulting to {_gossipPeriod}ms");
             }
@@ -67,28 +77,24 @@ namespace Cluster
                 _nodeExpiryPeriod = Math.Max(_scavangePeriod, _gossipPeriod * 10);
                 Trace.TraceInformation($"Failed to read <nodeExpiryPeriod> from config, defaulting to {_nodeExpiryPeriod}ms");
             }
-            
+
             if (!int.TryParse(ConfigurationManager.AppSettings["maxFailedGossipAttempts"], out _maxFailedGossipAttempts))
             {
                 _maxFailedGossipAttempts = 3;
                 Trace.TraceInformation($"Failed to read <maxFailedGossipAttempts> from config, defaulting to {_maxFailedGossipAttempts}");
             }
 
-            _localNode = localNode;
             _activeNodes.Add(_localNode);
-            foreach(var node in seedNodes)
-            {
-                _activeNodes.Add(node);
-            }
         }
 
         internal async Task Start()
         {
             _currentState = State.JoinCluster;
 
+            _startShutdown = false;
             _shutdownCancellationTokenSource = new CancellationTokenSource();
 
-            var seedNodes = SelectGossipPartners(CloneActiveNodes());
+            var seedNodes = SelectGossipPartners();
             bool connectedToSeed = false;
             foreach (var node in seedNodes)
             {
@@ -103,7 +109,7 @@ namespace Cluster
                     Trace.TraceInformation($"Could not contact node : {ex.Message}");
                 }
             }
-            
+
             // TODO: Refactor the handling of the startup handshake - Pending refactor of Cluster Manager as a state machine?
             // 1. It should run if it was not posible to connect to any of the seeds (what it does now)
             // 2. If a seed was contacted but no response was returned within a configured timeout period this should run. The seed process contacted might have failed.
@@ -113,15 +119,45 @@ namespace Cluster
             // scenarios...
             if (!connectedToSeed)
             {
-                Task task;
-                task = Task.Factory.StartNew(async (_) => { await GossipTask(); }, TaskCreationOptions.LongRunning, _shutdownCancellationTokenSource.Token);
-                task = Task.Factory.StartNew(async (_) => { await ScavangeTask(); }, TaskCreationOptions.LongRunning, _shutdownCancellationTokenSource.Token);
+                StartBackgroudProcessing();
             }
+        }
+
+        private void StartBackgroudProcessing()
+        {
+            _gossipTimer = new Timer(GossipActiveNodes, null, _gossipPeriod, _gossipPeriod);
+            _scavangeTimer = new Timer(ScavangeActiveNodes, null, _scavangePeriod, _scavangePeriod);
+            var task = Task.Factory.StartNew(ProcessGossipQueue, TaskCreationOptions.LongRunning, _shutdownCancellationTokenSource.Token);
+        }
+
+        private void StopBackgroundProcessing()
+        {
+            _gossipTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            _scavangeTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            _gossipTimer.Dispose();
+            _scavangeTimer.Dispose();
+
+            _gossipQueue.CompleteAdding();
+            _shutdownCancellationTokenSource.Cancel();
+            
+            Thread.Sleep(_gossipPeriod);
         }
 
         internal void Shutdown()
         {
-            _shutdownCancellationTokenSource.Cancel();            
+            _startShutdown = true;
+            StopBackgroundProcessing();
+
+            var index = _activeNodes.IndexOf(_localNode);
+            if (index >= 0)
+            {
+                var node = _activeNodes[index];
+                node.Update(int.MaxValue - 2);
+                node.IsShuttingDown = true;
+                GossipMessageImmediately(new LeaveClusterNotification(_clusterId, node));
+            }            
+            
+            Thread.Sleep(_gossipPeriod);
         }
 
         // TODO: Create clones of the Active and Dead list which contain deep clones of the ClusterNodes
@@ -145,25 +181,69 @@ namespace Cluster
         enum State
         {
             JoinCluster,
-            JoinedCluster,           
+            JoinedCluster,
         }
 
         internal async Task DispatchMessage(IMessage message)
         {
-            if (message is ShareClusterNodes)
+            if (_startShutdown) return;
+
+            bool dispatchMessage = true;
+            message.LastSeen = DateTime.Now;
+
+            // If the message has a time to live limit, it is checked for duplication and will be re-gossiped 
+            // upto TimeToLive times from this cluster node instance
+            if (message.TimeToLive > 0)
             {
-                var m = message as ShareClusterNodes;
-                await Task.Run(()=>ShareClusterNodesHandler(m));
+                IMessage previousMessage;
+                if (_previousMessages.TryGetValue(message.MessageId, out previousMessage))
+                {
+                    previousMessage.LastSeen = message.LastSeen;
+                    previousMessage.DuplicateCount++;
+                    message.DuplicateCount = previousMessage.DuplicateCount;
+                }
+                else
+                {
+                    _previousMessages.AddOrUpdate(message.MessageId, message, (g, m) => m);
+                }
+
+                if (message.DuplicateCount > message.TimeToLive)
+                {
+                    dispatchMessage = false;
+                }
+                else
+                {
+                    GossipMessage(message);
+                }
             }
-            else if (message is JoinClusterRequest)
+
+            if (message.DuplicateCount > 0 && message.IgnoreIfDuplicate)
             {
-                var m = message as JoinClusterRequest;
-                var handled = JoinClusterRequestHandler(m);
+                dispatchMessage = false;
             }
-            else if (message is JoinClusterResponse)
+
+            if (dispatchMessage)
             {
-                var m = message as JoinClusterResponse;
-                JoinClusterResponseHandler(m);
+                if (message is ShareClusterNodes)
+                {
+                    var m = message as ShareClusterNodes;
+                    await Task.Run(() => ShareClusterNodesHandler(m));
+                }
+                else if (message is JoinClusterRequest)
+                {
+                    var m = message as JoinClusterRequest;
+                    var handled = JoinClusterRequestHandler(m);
+                }
+                else if (message is JoinClusterResponse)
+                {
+                    var m = message as JoinClusterResponse;
+                    JoinClusterResponseHandler(m);
+                }
+                else if (message is LeaveClusterNotification)
+                {
+                    var m = message as LeaveClusterNotification;
+                    LeaveClusterNotificationHandler(m);
+                }
             }
         }
 
@@ -199,6 +279,40 @@ namespace Cluster
             }
         }
 
+        private void GossipMessage(IMessage message)
+        {
+            _gossipQueue.Add(message);
+        }
+
+        private void GossipMessageImmediately(IMessage message)
+        {
+            ParallelOptions po = new ParallelOptions();
+            po.MaxDegreeOfParallelism = 4;
+
+            var payload = CreatePayload(message);
+            var gossipPartners = SelectGossipPartners();
+            try
+            {
+                Parallel.ForEach(gossipPartners, po,
+                    async (node, loopState) =>
+                    {
+                        try
+                        {
+                            await SendMessage(node, payload);
+                        }
+                        catch (Exception ex)
+                        {
+                            node.ErrorCount++;
+                            Trace.TraceInformation($"Gossip failed : {ex.Message}");
+                        }
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                // Shutdown requested
+            }
+        }
+
         private async Task JoinClusterRequestHandler(JoinClusterRequest message)
         {
             if (!string.IsNullOrEmpty(_clusterId) && message.ClusterId != _clusterId)
@@ -208,7 +322,7 @@ namespace Cluster
             else
             {
                 await SendMessage(message.Node, new JoinClusterResponse(true, CloneActiveNodes()));
-                UpdateNodes(message.Node);                
+                UpdateNodes(message.Node);
             }
         }
 
@@ -217,18 +331,33 @@ namespace Cluster
             if (message.JoinSucceeded)
             {
                 UpdateNodes(message.Nodes);
-                Task.Factory.StartNew(async (_) => { await GossipTask(); }, TaskCreationOptions.LongRunning, _shutdownCancellationTokenSource.Token);
-                Task.Factory.StartNew(async (_) => { await ScavangeTask(); }, TaskCreationOptions.LongRunning, _shutdownCancellationTokenSource.Token);
+                StartBackgroudProcessing();
+                //TODO: Raise event here indicating that the cluster was successfully joined
             }
             else
             {
-                throw new Exception("Request to join cluster rejected");
+                Shutdown();
+                //TODO: Raise event here indicating the failure to join the cluster
             }
         }
 
         private void ShareClusterNodesHandler(ShareClusterNodes message)
         {
             UpdateNodes(message.Nodes);
+        }
+
+        private void LeaveClusterNotificationHandler(LeaveClusterNotification message)
+        {
+            lock(_activeNodes)
+            {
+                int index = _activeNodes.IndexOf(message.Node);
+                if (index >= 0)
+                {
+                    var node = _activeNodes[index];                    
+                    node.Update(message.Node.HeartBeat);
+                    node.IsShuttingDown = true;
+                }
+            }
         }
 
         private void UpdateNodes(params ClusterNode[] remoteNodes)
@@ -243,9 +372,10 @@ namespace Cluster
                         if (index >= 0)
                         {
                             var activeNode = _activeNodes[index];
-                            if (activeNode.HeartBeat < remoteNode.HeartBeat)
+                            if (activeNode.HeartBeat < remoteNode.HeartBeat || remoteNode.IsOriginNode)
                             {
                                 activeNode.Update(remoteNode.HeartBeat);
+                                activeNode.IsShuttingDown = remoteNode.IsShuttingDown;
                             }
                         }
                         else
@@ -261,7 +391,7 @@ namespace Cluster
                                     deadNode.Update(remoteNode.HeartBeat);
                                 }
                             }
-                            else
+                            else if (!remoteNode.IsShuttingDown)
                             {
                                 ClusterNode newNode = new ClusterNode(remoteNode.EndPoint, false);
                                 newNode.Update(remoteNode.HeartBeat);
@@ -273,109 +403,84 @@ namespace Cluster
             }
         }
 
-        private async Task GossipTask()
+        private void ProcessGossipQueue(object state)
         {
+            ParallelOptions po = new ParallelOptions();
+            po.CancellationToken = _shutdownCancellationTokenSource.Token;
+            
             try
             {
+                IMessage message;
                 while (!_shutdownCancellationTokenSource.Token.IsCancellationRequested)
                 {
-                    await Task.Delay(_gossipPeriod, _shutdownCancellationTokenSource.Token);
-                    try
+                    
+                    if (_gossipQueue.TryTake(out message, -1, _shutdownCancellationTokenSource.Token))
                     {
-                        GossipActiveNodes();
-                    }
-                    catch(Exception ex)
-                    {
-                        Debug.WriteLine(ex);
+                        do
+                        {                            
+                            GossipMessageImmediately(message);
+                        } while (!_shutdownCancellationTokenSource.Token.IsCancellationRequested && _gossipQueue.TryTake(out message));
                     }
                 }
             }
-            catch(TaskCanceledException)
+            catch (OperationCanceledException)
             {
-                // Delay was canceled
-            }
+                // Shutdown was requested               
+            }            
         }
 
-        private async Task ScavangeTask()
-        {
-            try
-            {
-                while (!_shutdownCancellationTokenSource.Token.IsCancellationRequested)
-                {
-                    await Task.Delay(_scavangePeriod, _shutdownCancellationTokenSource.Token);
-                    ScavangeActiveNodes();
-                }
-            }
-            catch (TaskCanceledException)
-            {
-                // Delay was canceled
-            }
-        }
-
-        private void GossipActiveNodes()
+        private void GossipActiveNodes(object state)
         {
             _localNode.Update();
 
             var nodes = CloneActiveNodes();
-
-            ClusterNode[] gossipPartners = null;
-            if (_deadNodes.Count > 0 && _random.NextDouble() < 0.1)
-            {
-                gossipPartners = SelectGossipPartners(CloneDeadNodes());
-            }
-            else
-            {
-                gossipPartners = SelectGossipPartners(nodes);
-                if (gossipPartners.Length == 0)
-                {
-                    gossipPartners = SelectGossipPartners(CloneDeadNodes());
-                }
-            }
-
-            var payload = CreatePayload(new ShareClusterNodes(nodes));
-            
-            Parallel.ForEach(gossipPartners,
-                async (node) =>
-                {
-                    try
-                    {
-                        await SendMessage(node, payload);
-                    }
-                    catch (Exception ex)
-                    {
-                        node.ErrorCount++;
-                        Trace.TraceInformation($"Gossip failed : {ex.Message}");
-                    }
-                });
+            GossipMessage(new ShareClusterNodes(nodes));
         }
 
-        private void ScavangeActiveNodes()
+        private void ScavangeActiveNodes(object state)
         {
+            // TODO: Scavange _previousMessages
+
             lock (_activeNodes)
             {
                 for (int i = _activeNodes.Count - 1; i >= 0; --i)
                 {
                     var node = _activeNodes[i];
-                    if (node == _localNode) continue;
+                    if (node.Equals(_localNode)) continue;
 
-                    if ((DateTime.Now - node.LastSeen).TotalMilliseconds > _nodeExpiryPeriod 
+                    var timeSpan = (DateTime.Now - node.LastSeen).TotalMilliseconds;
+                    if (timeSpan > _nodeExpiryPeriod 
                         || node.ErrorCount > _maxFailedGossipAttempts)
                     {
                         _activeNodes.RemoveAt(i);
-                        lock (_deadNodes)
+                        if (!node.IsShuttingDown)
                         {
-                            node.ErrorCount = 0;
-                            _deadNodes.Add(node);
+                            lock (_deadNodes)
+                            {
+                                node.ErrorCount = 0;
+                                _deadNodes.Add(node);
+                            }
                         }
                     }
                 }
             }
         }
 
-        private ClusterNode[] SelectGossipPartners(ClusterNode[] sourceNodes)
+        private ClusterNode[] SelectGossipPartners()
         {
+            var sourceNodes = CloneActiveNodes().Concat(_seedNodes).Distinct().ToArray();
             Shuffle(sourceNodes);
-            return sourceNodes.Where((node) => node != _localNode).Take(_gossipSpan).ToArray();
+
+            ClusterNode[] nodes = { };
+            if (_random.NextDouble() < 0.1)
+            {
+                var deadnodes = CloneDeadNodes();
+                if (deadnodes.Length > 0)
+                {
+                    nodes = new ClusterNode[] { deadnodes[_random.Next(deadnodes.Length)] };
+                }
+            }
+            return nodes.Concat(sourceNodes.Where((node) => !node.Equals(_localNode) && !node.IsShuttingDown)).Take(_gossipSpan).ToArray();
         }
 
         private ClusterNode[] CloneActiveNodes()

@@ -14,12 +14,15 @@ namespace Cluster
         {
             ClusterServer server = new ClusterServer(int.Parse(args[0]));
             Task t = server.Start();
+
+            Console.Clear();
             Console.WriteLine("Server Started...");
             int x = Console.CursorLeft;
             int y = Console.CursorTop;
             var defaultForeground = Console.ForegroundColor;
             while(!Console.KeyAvailable)
             {
+                Console.Clear();
                 var activeNodes = server.GetActiveNodes();
                 Console.SetCursorPosition(x, y);
                 Console.ForegroundColor = ConsoleColor.Green;
@@ -27,18 +30,25 @@ namespace Cluster
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"Dead Nodes : {server.GetDeadNodes().Count:000}");
                 Console.WriteLine();
-                Console.Write(new string(' ', 80));
                 Console.Write("\r");
-                foreach(var node in activeNodes)
+                foreach (var node in activeNodes)
                 {
-                    if (node.ErrorCount == 0) Console.ForegroundColor = ConsoleColor.Green;
-                    else if (node.ErrorCount == 1) Console.ForegroundColor = ConsoleColor.Yellow;
-                    else if (node.ErrorCount == 2) Console.ForegroundColor = ConsoleColor.DarkYellow;
-                    else Console.ForegroundColor = ConsoleColor.Red;
-                    if (node.ErrorCount == 0)
-                        Console.Write("O ");
+                    if (node.IsShuttingDown)
+                    {
+                        Console.ForegroundColor = ConsoleColor.DarkMagenta;
+                        Console.Write("X ");
+                    }
                     else
-                        Console.Write("o ");
+                    {
+                        if (node.ErrorCount == 0) Console.ForegroundColor = ConsoleColor.Green;
+                        else if (node.ErrorCount == 1) Console.ForegroundColor = ConsoleColor.Yellow;
+                        else if (node.ErrorCount == 2) Console.ForegroundColor = ConsoleColor.DarkYellow;
+                        else Console.ForegroundColor = ConsoleColor.Red;
+                        if (node.ErrorCount == 0)
+                            Console.Write("O ");
+                        else
+                            Console.Write("o ");
+                    }
                 }
                 
                 Console.WriteLine();
