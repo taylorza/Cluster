@@ -413,13 +413,9 @@ namespace Cluster
                 IMessage message;
                 while (!_shutdownCancellationTokenSource.Token.IsCancellationRequested)
                 {
-                    
                     if (_gossipQueue.TryTake(out message, -1, _shutdownCancellationTokenSource.Token))
                     {
-                        do
-                        {                            
-                            GossipMessageImmediately(message);
-                        } while (!_shutdownCancellationTokenSource.Token.IsCancellationRequested && _gossipQueue.TryTake(out message));
+                        GossipMessageImmediately(message);
                     }
                 }
             }
