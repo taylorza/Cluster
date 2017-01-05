@@ -16,7 +16,7 @@ namespace Cluster
         [NonSerialized]
         private int _errorCount;
 
-        internal bool IsOriginNode { get; private set; }
+        internal long Epoch { get; private set; }
         public int HeartBeat { get; private set; } = 1;
         public IPEndPoint EndPoint { get; private set; }
 
@@ -34,12 +34,20 @@ namespace Cluster
 
         public bool IsShuttingDown { get; set; }
 
+        internal ClusterNode(ClusterNode node)
+        {
+            Epoch = node.Epoch;
+            HeartBeat = node.HeartBeat;            
+            EndPoint = node.EndPoint;
+            LastSeen = DateTime.Now;
+        }
+
         internal ClusterNode(IPEndPoint endpoint, bool isOriginNode)
         {
-            HeartBeat = 1;
+            Epoch = (DateTime.UtcNow - new DateTime(1970, 1, 1)).Ticks / TimeSpan.TicksPerSecond;
+            HeartBeat = 1;            
             EndPoint = endpoint;
             LastSeen = DateTime.Now;
-            IsOriginNode = isOriginNode;
         }
 
         internal void Update()
@@ -52,6 +60,12 @@ namespace Cluster
             HeartBeat = heartBeat;
             LastSeen = DateTime.Now;
             ErrorCount = errorCount;
+        }
+
+        internal void Synchronize(ClusterNode node)
+        {
+            Epoch = node.Epoch;
+            Update(node.HeartBeat);
         }
 
         public bool Equals(ClusterNode other)

@@ -372,9 +372,10 @@ namespace Cluster
                         if (index >= 0)
                         {
                             var activeNode = _activeNodes[index];
-                            if (activeNode.HeartBeat < remoteNode.HeartBeat || remoteNode.IsOriginNode)
+                            if ((activeNode.Epoch == remoteNode.Epoch && activeNode.HeartBeat < remoteNode.HeartBeat) 
+                                || activeNode.Epoch < remoteNode.Epoch)
                             {
-                                activeNode.Update(remoteNode.HeartBeat);
+                                activeNode.Synchronize(remoteNode);
                                 activeNode.IsShuttingDown = remoteNode.IsShuttingDown;
                             }
                         }
@@ -384,17 +385,17 @@ namespace Cluster
                             if (index >= 0)
                             {
                                 var deadNode = _deadNodes[index];
-                                if (deadNode.HeartBeat < remoteNode.HeartBeat || remoteNode.IsOriginNode)
+                                if ((deadNode.Epoch == remoteNode.Epoch && deadNode.HeartBeat < remoteNode.HeartBeat)
+                                    || deadNode.Epoch < remoteNode.Epoch)
                                 {
                                     _deadNodes.RemoveAt(index);
                                     _activeNodes.Add(deadNode);
-                                    deadNode.Update(remoteNode.HeartBeat);
+                                    deadNode.Synchronize(remoteNode);
                                 }
                             }
                             else if (!remoteNode.IsShuttingDown)
                             {
-                                ClusterNode newNode = new ClusterNode(remoteNode.EndPoint, false);
-                                newNode.Update(remoteNode.HeartBeat);
+                                ClusterNode newNode = new ClusterNode(remoteNode);
                                 _activeNodes.Add(newNode);
                             }
                         }
