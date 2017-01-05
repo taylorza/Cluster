@@ -20,23 +20,23 @@ namespace Cluster
 
         private TcpListener _listener;
         private ClusterManager _manager;
-        private ClusterNode _localNode;
+        private ClusterNodeState _localNode;
         private int _serverPort;
         private volatile bool _running;
 
         public ClusterServer(int serverPort)
         {
             _serverPort = serverPort;
-            _localNode = new ClusterNode(new IPEndPoint(NetworkUtil.GetLocalIPAddress(), _serverPort), true);
+            _localNode = new ClusterNodeState(new IPEndPoint(NetworkUtil.GetLocalIPAddress(), _serverPort), true);
 
-            var seedNodes = new List<ClusterNode>();
+            var seedNodes = new List<ClusterNodeState>();
             var seedNodesString = ConfigurationManager.AppSettings.Get("seedNodes");            
             if (!string.IsNullOrWhiteSpace(seedNodesString))
             {
                 foreach(var seedNode in seedNodesString.Split(','))
                 {
                     IPEndPoint ep = NetworkUtil.CreateIPEndPoint(seedNode);
-                    if (!IPEndPoint.Equals(ep, _localNode.EndPoint)) seedNodes.Add(new ClusterNode(ep, false));
+                    if (!IPEndPoint.Equals(ep, _localNode.EndPoint)) seedNodes.Add(new ClusterNodeState(ep, false));
                 }
             }
             _manager = new ClusterManager(this, _localNode, seedNodes);
@@ -74,12 +74,12 @@ namespace Cluster
             }
         }
 
-        public List<ClusterNode> GetDeadNodes()
+        public List<ClusterNodeState> GetDeadNodes()
         {
             return _manager.GetDeadNodes();
         }
 
-        public List<ClusterNode> GetActiveNodes()
+        public List<ClusterNodeState> GetActiveNodes()
         {
             return _manager.GetActiveNodes();
         }

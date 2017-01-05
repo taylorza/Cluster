@@ -10,9 +10,9 @@ namespace Cluster.Messages
     class JoinClusterResponse : Message
     {
         public bool JoinSucceeded { get; private set; }
-        public ClusterNode[] Nodes { get; private set; }
+        public ClusterNodeState[] Nodes { get; private set; }
 
-        public JoinClusterResponse(bool succeeded, ClusterNode[] nodes)
+        public JoinClusterResponse(bool succeeded, ClusterNodeState[] nodes)
         {
             JoinSucceeded = succeeded;
             Nodes = nodes;

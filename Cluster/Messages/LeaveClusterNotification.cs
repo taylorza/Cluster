@@ -10,13 +10,13 @@ namespace Cluster.Messages
     class LeaveClusterNotification : Message
     {
         public string ClusterId { get; private set; }
-        public ClusterNode Node { get; private set; }
+        public ClusterNodeState Node { get; private set; }
        
-        public LeaveClusterNotification(string clusterId, ClusterNode node)
+        public LeaveClusterNotification(string clusterId, ClusterNodeState node)
         {            
             ClusterId = clusterId;
             Node = node;
-            TimeToLive = 3;
+            MaxRelayCount = 3;
         }
     }
 }

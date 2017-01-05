@@ -46,7 +46,7 @@
   <ItemGroup>
     <Compile Include="ByteBuffer.cs" />
     <Compile Include="ClusterManager.cs" />
-    <Compile Include="ClusterNode.cs" />
+    <Compile Include="ClusterNodeState.cs" />
     <Compile Include="Messages\LeaveClusterNotification.cs" />
     <Compile Include="Messages\JoinClusterRequest.cs" />
     <Compile Include="Messages\JoinClusterResponse.cs" />
@@ -56,6 +56,7 @@
     <Compile Include="Messages\IMessage.cs" />
     <Compile Include="IndexedList.cs" />
     <Compile Include="MessageProtocol.cs" />
+    <Compile Include="MessageTracker.cs" />
     <Compile Include="NetworkUtil.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

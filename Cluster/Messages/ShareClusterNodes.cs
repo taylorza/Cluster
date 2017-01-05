@@ -9,9 +9,9 @@ namespace Cluster.Messages
     [Serializable]
     class ShareClusterNodes : Message
     {
-        public ClusterNode[] Nodes { get; private set; }
+        public ClusterNodeState[] Nodes { get; private set; }
 
-        public ShareClusterNodes(ClusterNode[] nodes)
+        public ShareClusterNodes(ClusterNodeState[] nodes)
         {
             Nodes = nodes;
         }

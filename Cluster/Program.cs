@@ -30,7 +30,6 @@ namespace Cluster
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"Dead Nodes : {server.GetDeadNodes().Count:000}");
                 Console.WriteLine();
-                Console.Write("\r");
                 foreach (var node in activeNodes)
                 {
                     if (node.IsShuttingDown)
@@ -44,10 +43,7 @@ namespace Cluster
                         else if (node.ErrorCount == 1) Console.ForegroundColor = ConsoleColor.Yellow;
                         else if (node.ErrorCount == 2) Console.ForegroundColor = ConsoleColor.DarkYellow;
                         else Console.ForegroundColor = ConsoleColor.Red;
-                        if (node.ErrorCount == 0)
-                            Console.Write("O ");
-                        else
-                            Console.Write("o ");
+                        Console.Write($"{node.ErrorCount} ");
                     }
                 }
                 

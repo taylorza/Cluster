@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 namespace Cluster
 {
     [Serializable]
-    public class ClusterNode : IEquatable<ClusterNode>
+    public class ClusterNodeState : IEquatable<ClusterNodeState>
     {
         [NonSerialized]
         private DateTime _lastSeen;
@@ -34,7 +34,7 @@ namespace Cluster
 
         public bool IsShuttingDown { get; set; }
 
-        internal ClusterNode(ClusterNode node)
+        internal ClusterNodeState(ClusterNodeState node)
         {
             Epoch = node.Epoch;
             HeartBeat = node.HeartBeat;            
@@ -42,7 +42,7 @@ namespace Cluster
             LastSeen = DateTime.Now;
         }
 
-        internal ClusterNode(IPEndPoint endpoint, bool isOriginNode)
+        internal ClusterNodeState(IPEndPoint endpoint, bool isOriginNode)
         {
             Epoch = (DateTime.UtcNow - new DateTime(1970, 1, 1)).Ticks / TimeSpan.TicksPerSecond;
             HeartBeat = 1;            
@@ -62,13 +62,13 @@ namespace Cluster
             ErrorCount = errorCount;
         }
 
-        internal void Synchronize(ClusterNode node)
+        internal void Synchronize(ClusterNodeState node)
         {
             Epoch = node.Epoch;
             Update(node.HeartBeat);
         }
 
-        public bool Equals(ClusterNode other)
+        public bool Equals(ClusterNodeState other)
         {
             if (other == null) return false;
             if (object.ReferenceEquals(this, other)) return true;
@@ -77,7 +77,7 @@ namespace Cluster
 
         public override bool Equals(object obj)
         {
-            return Equals(obj as ClusterNode);
+            return Equals(obj as ClusterNodeState);
         }
 
         public override int GetHashCode()

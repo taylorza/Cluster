@@ -10,9 +10,9 @@ namespace Cluster.Messages
     class JoinClusterRequest : Message
     {
         public string ClusterId { get; private set; }
-        public ClusterNode Node { get; private set; }
+        public ClusterNodeState Node { get; private set; }
         
-        public JoinClusterRequest(string clusterId, ClusterNode node)
+        public JoinClusterRequest(string clusterId, ClusterNodeState node)
         {
             ClusterId = clusterId;
             Node = node;

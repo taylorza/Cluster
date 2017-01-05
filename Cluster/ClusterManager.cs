@@ -20,7 +20,7 @@ namespace Cluster
         private ClusterServer _clusterServer;
 
         private Guid _leaderElectionId;
-        private ClusterNode _leader;
+        private ClusterNodeState _leader;
         private string _clusterId;
         private int _gossipSpan;
         private int _gossipPeriod;
@@ -32,18 +32,19 @@ namespace Cluster
         private Timer _scavangeTimer;
 
         private Random _random = new Random();
-        private IndexedList<ClusterNode> _activeNodes = new IndexedList<ClusterNode>();
-        private IndexedList<ClusterNode> _deadNodes = new IndexedList<ClusterNode>();
+        private IndexedList<ClusterNodeState> _activeNodes = new IndexedList<ClusterNodeState>();
+        private IndexedList<ClusterNodeState> _deadNodes = new IndexedList<ClusterNodeState>();
         private BlockingCollection<IMessage> _gossipQueue = new BlockingCollection<IMessage>();
-        private ConcurrentDictionary<Guid, IMessage> _previousMessages = new ConcurrentDictionary<Guid, IMessage>();
 
-        private ClusterNode[] _seedNodes;
-        private ClusterNode _localNode;
+        private MessageTracker _messageTracker = new MessageTracker();
+        
+        private ClusterNodeState[] _seedNodes;
+        private ClusterNodeState _localNode;
         private volatile bool _startShutdown;
         private CancellationTokenSource _shutdownCancellationTokenSource;
         private State _currentState;
 
-        internal ClusterManager(ClusterServer clusterServer, ClusterNode localNode, IEnumerable<ClusterNode> seedNodes)
+        internal ClusterManager(ClusterServer clusterServer, ClusterNodeState localNode, IEnumerable<ClusterNodeState> seedNodes)
         {
             _clusterServer = clusterServer;
             _seedNodes = seedNodes.ToArray();
@@ -161,7 +162,7 @@ namespace Cluster
         }
 
         // TODO: Create clones of the Active and Dead list which contain deep clones of the ClusterNodes
-        internal List<ClusterNode> GetActiveNodes()
+        internal List<ClusterNodeState> GetActiveNodes()
         {
             lock (_activeNodes)
             {
@@ -170,7 +171,7 @@ namespace Cluster
         }
 
         // TODO: Create clones of the Active and Dead list which contain deep clones of the ClusterNodes
-        internal List<ClusterNode> GetDeadNodes()
+        internal List<ClusterNodeState> GetDeadNodes()
         {
             lock (_deadNodes)
             {
@@ -191,36 +192,27 @@ namespace Cluster
             bool dispatchMessage = true;
             message.LastSeen = DateTime.Now;
 
-            // If the message has a time to live limit, it is checked for duplication and will be re-gossiped 
-            // upto TimeToLive times from this cluster node instance
-            if (message.TimeToLive > 0)
+            int relayCount = 0;
+
+            if (message.MaxRelayCount > 0)
             {
-                IMessage previousMessage;
-                if (_previousMessages.TryGetValue(message.MessageId, out previousMessage))
+                relayCount = _messageTracker.TrackMessage(message);
+                
+                if (relayCount <= message.MaxRelayCount)
                 {
-                    previousMessage.LastSeen = message.LastSeen;
-                    previousMessage.DuplicateCount++;
-                    message.DuplicateCount = previousMessage.DuplicateCount;
+                    GossipMessage(message);                    
                 }
                 else
                 {
-                    _previousMessages.AddOrUpdate(message.MessageId, message, (g, m) => m);
+                    dispatchMessage = false;            
                 }
 
-                if (message.DuplicateCount > message.TimeToLive)
+                if (relayCount > 1 && message.IgnoreIfDuplicate)
                 {
                     dispatchMessage = false;
                 }
-                else
-                {
-                    GossipMessage(message);
-                }
             }
-
-            if (message.DuplicateCount > 0 && message.IgnoreIfDuplicate)
-            {
-                dispatchMessage = false;
-            }
+            
 
             if (dispatchMessage)
             {
@@ -259,13 +251,13 @@ namespace Cluster
             return payload;
         }
 
-        private async Task SendMessage(ClusterNode node, IMessage message)
+        private async Task SendMessage(ClusterNodeState node, IMessage message)
         {
             var payload = CreatePayload(message);
             await SendMessage(node, payload);
         }
 
-        private async Task SendMessage(ClusterNode node, byte[] payload)
+        private async Task SendMessage(ClusterNodeState node, byte[] payload)
         {
             using (var tcpClient = new TcpClient())
             {
@@ -360,7 +352,7 @@ namespace Cluster
             }
         }
 
-        private void UpdateNodes(params ClusterNode[] remoteNodes)
+        private void UpdateNodes(params ClusterNodeState[] remoteNodes)
         {
             lock (_activeNodes)
             {
@@ -395,7 +387,7 @@ namespace Cluster
                             }
                             else if (!remoteNode.IsShuttingDown)
                             {
-                                ClusterNode newNode = new ClusterNode(remoteNode);
+                                ClusterNodeState newNode = new ClusterNodeState(remoteNode);
                                 _activeNodes.Add(newNode);
                             }
                         }
@@ -436,8 +428,6 @@ namespace Cluster
 
         private void ScavangeActiveNodes(object state)
         {
-            // TODO: Scavange _previousMessages
-
             lock (_activeNodes)
             {
                 for (int i = _activeNodes.Count - 1; i >= 0; --i)
@@ -461,26 +451,28 @@ namespace Cluster
                     }
                 }
             }
+
+            _messageTracker.Scavange();
         }
 
-        private ClusterNode[] SelectGossipPartners()
+        private ClusterNodeState[] SelectGossipPartners()
         {
             var sourceNodes = CloneActiveNodes().Concat(_seedNodes).Distinct().ToArray();
             Shuffle(sourceNodes);
 
-            ClusterNode[] nodes = { };
+            ClusterNodeState[] nodes = { };
             if (_random.NextDouble() < 0.1)
             {
                 var deadnodes = CloneDeadNodes();
                 if (deadnodes.Length > 0)
                 {
-                    nodes = new ClusterNode[] { deadnodes[_random.Next(deadnodes.Length)] };
+                    nodes = new ClusterNodeState[] { deadnodes[_random.Next(deadnodes.Length)] };
                 }
             }
             return nodes.Concat(sourceNodes.Where((node) => !node.Equals(_localNode) && !node.IsShuttingDown)).Take(_gossipSpan).ToArray();
         }
 
-        private ClusterNode[] CloneActiveNodes()
+        private ClusterNodeState[] CloneActiveNodes()
         {
             lock (_activeNodes)
             {
@@ -488,7 +480,7 @@ namespace Cluster
             }
         }
 
-        private ClusterNode[] CloneDeadNodes()
+        private ClusterNodeState[] CloneDeadNodes()
         {
             lock(_deadNodes)
             {
@@ -496,13 +488,13 @@ namespace Cluster
             }
         }
 
-        private void Shuffle(ClusterNode[] nodes)
+        private void Shuffle(ClusterNodeState[] nodes)
         {
             for(int i = 0; i < nodes.Length - 1; ++i)
             {
                 int j = _random.Next(i, nodes.Length);
                 if (j == i) continue;
-                ClusterNode t = nodes[i];
+                ClusterNodeState t = nodes[i];
                 nodes[i] = nodes[j];
                 nodes[j] = t;
             }

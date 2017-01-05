@@ -9,7 +9,7 @@ namespace Cluster.Messages
     internal interface IMessage
     {
         Guid MessageId { get; }
-        int TimeToLive { get; set; }
+        int MaxRelayCount { get; set; }
         int DuplicateCount { get; set; }
         bool IgnoreIfDuplicate { get; set; }
         DateTime LastSeen { get; set; }   

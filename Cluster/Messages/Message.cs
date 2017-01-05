@@ -20,12 +20,12 @@ namespace Cluster.Messages
             MessageId = Guid.NewGuid();
             IgnoreIfDuplicate = true;
             DuplicateCount = 0;
-            TimeToLive = -1;
+            MaxRelayCount = -1;
         }
 
         public Guid MessageId { get; }
 
-        public int TimeToLive { get; set; }
+        public int MaxRelayCount { get; set; }
         
         public DateTime LastSeen
         {
