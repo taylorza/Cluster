@@ -109,7 +109,7 @@ namespace Cluster
                                 }
                                 protocol.DataReceived(buffer, 0, bytesRead);
                             }
-                            catch (SocketException ex)
+                            catch (IOException ex)
                             {
                                 Debug.WriteLine(ex);
                                 break;
