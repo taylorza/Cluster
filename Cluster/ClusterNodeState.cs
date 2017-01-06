@@ -11,6 +11,9 @@ namespace Cluster
     public class ClusterNodeState : IEquatable<ClusterNodeState>
     {
         [NonSerialized]
+        private object _syncRoot = new object();
+
+        [NonSerialized]
         private DateTime _lastSeen;
 
         [NonSerialized]
@@ -52,20 +55,29 @@ namespace Cluster
 
         internal void Update()
         {
-            Update(HeartBeat + 1, 0);
+            lock (_syncRoot)
+            {
+                Update(HeartBeat + 1, 0);
+            }
         }
 
         internal void Update(int heartBeat, int errorCount = 0)
         {
-            HeartBeat = heartBeat;
-            LastSeen = DateTime.Now;
-            ErrorCount = errorCount;
+            lock (_syncRoot)
+            {
+                HeartBeat = heartBeat;
+                LastSeen = DateTime.Now;
+                ErrorCount = errorCount;
+            }
         }
 
         internal void Synchronize(ClusterNodeState node)
         {
-            Epoch = node.Epoch;
-            Update(node.HeartBeat);
+            lock (_syncRoot)
+            {
+                Epoch = node.Epoch;
+                Update(node.HeartBeat);
+            }
         }
 
         public bool Equals(ClusterNodeState other)

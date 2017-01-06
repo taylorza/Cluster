@@ -133,13 +133,14 @@ namespace Cluster
 
         private void StopBackgroundProcessing()
         {
-            _gossipTimer.Change(Timeout.Infinite, Timeout.Infinite);
-            _scavangeTimer.Change(Timeout.Infinite, Timeout.Infinite);
-            _gossipTimer.Dispose();
-            _scavangeTimer.Dispose();
+            _gossipTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+            _gossipTimer?.Dispose();
 
-            _gossipQueue.CompleteAdding();
-            _shutdownCancellationTokenSource.Cancel();
+            _scavangeTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+            _scavangeTimer?.Dispose();
+
+            _gossipQueue?.CompleteAdding();
+            _shutdownCancellationTokenSource?.Cancel();
             
             Thread.Sleep(_gossipPeriod);
         }
